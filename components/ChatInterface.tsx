@@ -11,7 +11,7 @@ interface Message {
   content: string;
 }
 
-type Mode = "proxy" | "direct" | "mock";
+type Mode = "edge" | "direct" | "mock";
 
 const MODEL_MAP: Record<string, string> = {
   "xiaomi/mimo-v2.5": "MiMo V2.5",
@@ -72,7 +72,7 @@ const MOCK_RESPONSES = [
 function getMockResponse(prompt: string): string {
   const lower = prompt.toLowerCase();
   if (lower.includes("halo") || lower.includes("hai")) {
-    return "Halo! Saya MIMO AI. Saya siap membantu dengan berbagai pertanyaan dan tugas. Model aktif saat ini adalah " + (MODEL_MAP["xiaomi/mimo-v2.5-pro"] || "Unknown") + ".";
+    return "Halo! Saya MIMO AI. Saya siap membantu dengan berbagai pertanyaan dan tugas. Model aktif saat ini adalah MiMo V2.5 Pro.";
   }
   if (lower.includes("enkripsi") || lower.includes("encrypt") || lower.includes("xor")) {
     return "Sistem ini menggunakan XOR cipher dengan kunci rahasia untuk obfuscasi payload, ditambah HMAC-SHA256 untuk verifikasi integritas request.";
@@ -109,12 +109,12 @@ export default function ChatInterface() {
     {
       role: "system",
       content:
-        "Selamat datang di MIMO AI Brutalist Interface. Pilih model dari dropdown, pilih mode (PROXY / DIRECT / MOCK), ketik pesan, dan tekan ENTER.",
+        "Selamat datang di MIMO AI Brutalist Interface. Pilih model, pilih mode (EDGE / DIRECT / MOCK), ketik pesan, dan tekan ENTER. EDGE mode menggunakan Vercel Edge Runtime untuk bypass Cloudflare block.",
     },
   ]);
   const [input, setInput] = useState("");
   const [model, setModel] = useState("xiaomi/mimo-v2.5-pro");
-  const [mode, setMode] = useState<Mode>("proxy");
+  const [mode, setMode] = useState<Mode>("edge");
   const [isStreaming, setIsStreaming] = useState(false);
   const [status, setStatus] = useState<"online" | "streaming" | "error">("online");
   const [tokenCount, setTokenCount] = useState(0);
@@ -128,7 +128,7 @@ export default function ChatInterface() {
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  const handleProxySend = async (text: string) => {
+  const handleEdgeSend = async (text: string) => {
     const res = await fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -142,7 +142,7 @@ export default function ChatInterface() {
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Request failed" }));
       const errMsg = err.detail === "CLOUDFLARE_BLOCKED"
-        ? "[CLOUDFLARE BLOCK] Server Vercel di-block oleh API. Coba ganti ke DIRECT MODE."
+        ? "[CLOUDFLARE BLOCK] Edge Runtime juga di-block. Coba DIRECT MODE."
         : err.error || "Unknown error";
       setMessages((prev) => {
         const copy = [...prev];
@@ -248,18 +248,20 @@ export default function ChatInterface() {
     setMessages((prev) => [...prev, aiPlaceholder]);
 
     try {
-      if (mode === "proxy") {
-        await handleProxySend(text);
+      if (mode === "edge") {
+        await handleEdgeSend(text);
       } else if (mode === "direct") {
         await handleDirectSend(text);
       } else {
         handleMockSend(text);
-        return; // mock handles its own cleanup
+        return;
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Network failure";
       const display = msg === "CLOUDFLARE_BLOCKED"
-        ? "[CLOUDFLARE BLOCK] Request dari browser juga di-block. Coba MOCK MODE untuk test UI."
+        ? "[CLOUDFLARE BLOCK] Browser IP juga di-block. API ini mungkin memerlukan proxy eksternal."
+        : msg.includes("Failed to fetch") || msg.includes("NetworkError")
+        ? "[CORS BLOCK] Browser tidak bisa akses API langsung (CORS policy). Coba EDGE MODE."
         : msg;
       setMessages((prev) => {
         const copy = [...prev];
@@ -290,7 +292,6 @@ export default function ChatInterface() {
         flexDirection: "column",
       }}
     >
-      {/* HEADER */}
       <div
         style={{
           borderBottom: "3px solid var(--border)",
@@ -337,7 +338,6 @@ export default function ChatInterface() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
           <ModelSelector selected={model} onChange={setModel} />
-          {/* MODE TOGGLE */}
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <label style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase" }}>Mode:</label>
             <select
@@ -346,7 +346,7 @@ export default function ChatInterface() {
               onChange={(e) => setMode(e.target.value as Mode)}
               style={{ minWidth: "100px", fontSize: "10px" }}
             >
-              <option value="proxy">PROXY</option>
+              <option value="edge">EDGE</option>
               <option value="direct">DIRECT</option>
               <option value="mock">MOCK</option>
             </select>
@@ -354,7 +354,6 @@ export default function ChatInterface() {
         </div>
       </div>
 
-      {/* MODE INFO BAR */}
       <div
         style={{
           borderBottom: "1px solid var(--border)",
@@ -363,22 +362,21 @@ export default function ChatInterface() {
           fontWeight: 700,
           textTransform: "uppercase",
           background:
-            mode === "proxy"
-              ? "rgba(0,102,255,0.08)"
+            mode === "edge"
+              ? "rgba(0,170,68,0.08)"
               : mode === "direct"
               ? "rgba(255,42,42,0.08)"
               : "rgba(17,17,17,0.06)",
           color: "var(--muted)",
         }}
       >
-        {mode === "proxy"
-          ? "PROXY MODE: Request lewat server Vercel (bisa kena Cloudflare block)"
+        {mode === "edge"
+          ? "EDGE MODE: Vercel Edge Runtime (Cloudflare network) — paling mungkin bypass block"
           : mode === "direct"
-          ? "DIRECT MODE: Request langsung dari browser (bypass IP block)"
-          : "MOCK MODE: Simulasi response lokal (no API call)"}
+          ? "DIRECT MODE: Browser → API langsung — bisa kena CORS / Cloudflare"
+          : "MOCK MODE: Simulasi lokal — no API call"}
       </div>
 
-      {/* STATUS BAR */}
       <StatusBar
         status={status}
         modelName={modelName}
@@ -386,7 +384,6 @@ export default function ChatInterface() {
         msgCount={messages.filter((m) => m.role !== "system").length}
       />
 
-      {/* CHAT AREA */}
       <div
         ref={chatRef}
         style={{
@@ -411,7 +408,6 @@ export default function ChatInterface() {
         ))}
       </div>
 
-      {/* INPUT AREA */}
       <div
         style={{
           borderTop: "3px solid var(--border)",
