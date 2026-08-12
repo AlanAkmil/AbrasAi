@@ -15,7 +15,7 @@ export default function MessageBubble({
 }: MessageBubbleProps) {
   const isUser = role === "user";
   const isSystem = role === "system";
-  const isError = content.startsWith("ERROR:") || content.startsWith("[CLOUDFLARE") || content.startsWith("[ERROR");
+  const isError = content.startsWith("ERROR:") || content.startsWith("[CLOUDFLARE") || content.startsWith("[CORS") || content.startsWith("[ERROR");
 
   return (
     <div
