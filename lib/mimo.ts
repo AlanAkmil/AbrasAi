@@ -1,6 +1,6 @@
 import crypto from "crypto";
 
-const ENCRYPTION_KEY = Buffer.from("@sk=Rigel5729%2-diordnA", "utf-8");
+const ENCRYPTION_KEY_STR = "@sk=Rigel5729%2-diordnA";
 
 export interface Message {
   role: "user" | "assistant" | "system";
@@ -63,36 +63,62 @@ export const MODEL_REGISTRY: ModelInfo[] = [
   { id: "inception/mercury-2", name: "Mercury 2", provider: "Inception", premium: true },
 ];
 
+// ===================== SERVER-SIDE CRYPTO (Node.js) =====================
 export class MimoCrypto {
   static obfuscate(text: string): string {
     if (!text) return "";
-    const inputBuffer = Buffer.from(String(text), "utf-8");
-    const xorBuffer = Buffer.alloc(inputBuffer.length);
-    for (let idx = 0; idx < inputBuffer.length; idx++) {
-      xorBuffer[idx] = inputBuffer[idx] ^ ENCRYPTION_KEY[idx % ENCRYPTION_KEY.length];
+    const key = Buffer.from(ENCRYPTION_KEY_STR, "utf-8");
+    const input = Buffer.from(String(text), "utf-8");
+    const out = Buffer.alloc(input.length);
+    for (let i = 0; i < input.length; i++) {
+      out[i] = input[i] ^ key[i % key.length];
     }
-    return xorBuffer.toString("base64") + "\n";
+    return out.toString("base64") + "\n";
   }
 
   static signRequest(rawJson: string, timestamp: string): string {
-    return crypto
-      .createHmac("sha256", ENCRYPTION_KEY)
-      .update(`${rawJson}:${timestamp}`, "utf-8")
-      .digest("base64");
+    const key = Buffer.from(ENCRYPTION_KEY_STR, "utf-8");
+    return crypto.createHmac("sha256", key).update(`${rawJson}:${timestamp}`, "utf-8").digest("base64");
   }
 
   static makeUuid(installTime: number, edition = "full_edition"): string {
     const bytes = crypto.randomBytes(16).toString("hex");
-    const parts = [
-      bytes.substring(0, 8),
-      bytes.substring(8, 12),
-      bytes.substring(12, 16),
-      bytes.substring(16, 20),
-      bytes.substring(20, 32),
-    ];
-    const uuidFormat = parts.join("-");
-    return `user_fi-${installTime}_uu-${uuidFormat}_pa-mimo_ed-${edition}_apv-3_anv-android__14__API__34)`;
+    const parts = [bytes.slice(0,8), bytes.slice(8,12), bytes.slice(12,16), bytes.slice(16,20), bytes.slice(20,32)];
+    return `user_fi-${installTime}_uu-${parts.join("-")}_pa-mimo_ed-${edition}_apv-3_anv-android__14__API__34)`;
   }
+}
+
+// ===================== CLIENT-SIDE CRYPTO (Browser) =====================
+export function clientObfuscate(text: string): string {
+  if (!text) return "";
+  const key = new TextEncoder().encode(ENCRYPTION_KEY_STR);
+  const input = new TextEncoder().encode(String(text));
+  const out = new Uint8Array(input.length);
+  for (let i = 0; i < input.length; i++) {
+    out[i] = input[i] ^ key[i % key.length];
+  }
+  let binary = "";
+  for (let i = 0; i < out.length; i++) binary += String.fromCharCode(out[i]);
+  return btoa(binary) + "\n";
+}
+
+export async function clientSignRequest(rawJson: string, timestamp: string): Promise<string> {
+  const key = new TextEncoder().encode(ENCRYPTION_KEY_STR);
+  const msg = new TextEncoder().encode(`${rawJson}:${timestamp}`);
+  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, msg);
+  const bytes = new Uint8Array(sig);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+export function clientMakeUuid(installTime: number, edition = "full_edition"): string {
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  const hex = Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+  const parts = [hex.slice(0,8), hex.slice(8,12), hex.slice(12,16), hex.slice(16,20), hex.slice(20,32)];
+  return `user_fi-${installTime}_uu-${parts.join("-")}_pa-mimo_ed-${edition}_apv-3_anv-android__14__API__34)`;
 }
 
 export interface ChatPayload {
@@ -129,53 +155,61 @@ export interface ChatPayload {
 export function buildPayload(
   model: string,
   messages: Message[],
-  prompt?: string
+  prompt?: string,
+  isClient = false
 ): { payload: ChatPayload; jsonStr: string; timestamp: string; signature: string } {
   const currentTime = Date.now();
   const installedTime = currentTime - 86400000;
   const conversationHistory = [...messages];
-  if (prompt) {
-    conversationHistory.push({ role: "user", content: prompt });
-  }
-  const characterCount = conversationHistory.reduce(
-    (total, msg) => total + (msg.content ? msg.content.length : 0),
-    0
-  );
+  if (prompt) conversationHistory.push({ role: "user", content: prompt });
+  const characterCount = conversationHistory.reduce((t, m) => t + (m.content?.length || 0), 0);
+
+  const obf = isClient ? clientObfuscate : MimoCrypto.obfuscate;
+  const sign = isClient
+    ? (async (r: string, t: string) => clientSignRequest(r, t))
+    : ((r: string, t: string) => MimoCrypto.signRequest(r, t));
+  const makeUuid = isClient ? clientMakeUuid : MimoCrypto.makeUuid;
+  const randHex = isClient
+    ? () => Array.from(crypto.getRandomValues(new Uint8Array(8)), (b) => b.toString(16).padStart(2, "0")).join("")
+    : () => crypto.randomBytes(8).toString("hex");
+  const randHex16 = isClient
+    ? () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("")
+    : () => crypto.randomBytes(16).toString("hex");
 
   const payload: ChatPayload = {
-    package: MimoCrypto.obfuscate("info.camposha.mimo"),
-    uuid: MimoCrypto.obfuscate(MimoCrypto.makeUuid(installedTime, "full_edition")),
-    edition: MimoCrypto.obfuscate("full_edition"),
-    subscription: MimoCrypto.obfuscate("monthly"),
+    package: obf("info.camposha.mimo"),
+    uuid: obf(makeUuid(installedTime, "full_edition")),
+    edition: obf("full_edition"),
+    subscription: obf("monthly"),
     order_id: "GPA.3312-4567-8901-23456",
     last_purchase_date: "2026-08-01",
-    ai_model: MimoCrypto.obfuscate(model),
+    ai_model: obf(model),
     messages: conversationHistory,
     token_usage: 0,
     thread_char_count: characterCount,
     is_premium: true,
-    current_language: MimoCrypto.obfuscate("in"),
-    app_version: MimoCrypto.obfuscate("3"),
-    request_date: MimoCrypto.obfuscate(new Date().toISOString().split("T")[0]),
+    current_language: obf("in"),
+    app_version: obf("3"),
+    request_date: obf(new Date().toISOString().split("T")[0]),
     request_time: currentTime,
     first_install: installedTime,
-    version: MimoCrypto.obfuscate("android__14__API__34)"),
+    version: obf("android__14__API__34)"),
     session_requests: 1,
     current_session_ads: 0,
-    android_id: MimoCrypto.obfuscate(crypto.randomBytes(8).toString("hex")),
-    hw_fp: MimoCrypto.obfuscate(crypto.randomBytes(16).toString("hex")),
+    android_id: obf(randHex()),
+    hw_fp: obf(randHex16()),
     is_rooted: false,
     is_emulator: false,
-    tz: MimoCrypto.obfuscate("Asia/Jakarta"),
-    currency: MimoCrypto.obfuscate("IDR"),
-    country: MimoCrypto.obfuscate("ID"),
+    tz: obf("Asia/Jakarta"),
+    currency: obf("IDR"),
+    country: obf("ID"),
     gpa_id: "GPA.3312-4567-8901-23456",
     extra: "",
   };
 
   const payloadJsonStr = JSON.stringify(payload);
   const timestampStr = String(currentTime);
-  const signature = MimoCrypto.signRequest(payloadJsonStr, timestampStr);
+  const signature = isClient ? "" : MimoCrypto.signRequest(payloadJsonStr, timestampStr);
 
   return { payload, jsonStr: payloadJsonStr, timestamp: timestampStr, signature };
 }
