@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { buildPayload, Message } from "@/lib/mimo";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
+export const runtime = "edge";
+export const preferredRegion = "sin1";
 
 function isHtml(text: string): boolean {
   return text.trimStart().startsWith("<") && text.includes("</html>");
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const { jsonStr, timestamp, signature } = buildPayload(
+  const { jsonStr, timestamp, signature } = await buildPayload(
     model || "xiaomi/mimo-v2.5-pro",
     (messages as Message[]) || [],
     prompt
@@ -49,8 +49,7 @@ export async function POST(req: NextRequest) {
     if (isHtml(errText)) {
       return new Response(
         JSON.stringify({
-          error:
-            "Cloudflare blocked this request. The API server rejected the Vercel datacenter IP. Try switching to DIRECT MODE in the UI.",
+          error: "Cloudflare blocked this request. Try DIRECT MODE.",
           detail: "CLOUDFLARE_BLOCKED",
         }),
         { status: 502, headers: { "Content-Type": "application/json" } }
