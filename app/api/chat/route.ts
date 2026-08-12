@@ -4,6 +4,10 @@ import { buildPayload, Message } from "@/lib/mimo";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+function isHtml(text: string): boolean {
+  return text.trimStart().startsWith("<") && text.includes("</html>");
+}
+
 export async function POST(req: NextRequest) {
   const { prompt, messages, model } = await req.json();
 
@@ -20,24 +24,42 @@ export async function POST(req: NextRequest) {
     prompt
   );
 
-  const upstream = await fetch("https://aiv1.clemy.top/chat-completion-stream", {
-    method: "POST",
-    headers: {
-      Accept: "text/event-stream",
-      "Content-Type": "application/json; charset=utf-8",
-      "X-Signature": signature,
-      "X-Timestamp": timestamp,
-      "User-Agent": "Neo/1.0",
-    },
-    body: jsonStr,
-  });
+  let upstream: Response;
+  try {
+    upstream = await fetch("https://aiv1.clemy.top/chat-completion-stream", {
+      method: "POST",
+      headers: {
+        Accept: "text/event-stream",
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Signature": signature,
+        "X-Timestamp": timestamp,
+        "User-Agent": "Neo/1.0",
+      },
+      body: jsonStr,
+    });
+  } catch (e) {
+    return new Response(
+      JSON.stringify({ error: "Network failure — API unreachable" }),
+      { status: 502, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   if (!upstream.ok) {
     const errText = await upstream.text().catch(() => "Upstream error");
-    return new Response(JSON.stringify({ error: errText }), {
-      status: upstream.status,
-      headers: { "Content-Type": "application/json" },
-    });
+    if (isHtml(errText)) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "Cloudflare blocked this request. The API server rejected the Vercel datacenter IP. Try switching to DIRECT MODE in the UI.",
+          detail: "CLOUDFLARE_BLOCKED",
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } }
+      );
+    }
+    return new Response(
+      JSON.stringify({ error: errText.slice(0, 500) }),
+      { status: upstream.status, headers: { "Content-Type": "application/json" } }
+    );
   }
 
   const encoder = new TextEncoder();
@@ -45,10 +67,7 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      if (!reader) {
-        controller.close();
-        return;
-      }
+      if (!reader) { controller.close(); return; }
       try {
         let buffer = "";
         while (true) {
@@ -69,13 +88,9 @@ export async function POST(req: NextRequest) {
                 const parsed = JSON.parse(dataStr);
                 const chunk = parsed.choices?.[0]?.delta?.content;
                 if (chunk) {
-                  controller.enqueue(
-                    encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`)
-                  );
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`));
                 }
-              } catch {
-                // ignore malformed lines
-              }
+              } catch {}
             }
           }
         }
