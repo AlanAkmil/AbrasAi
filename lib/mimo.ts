@@ -187,4 +187,5 @@ export async function buildPayload(
   const timestampStr = String(currentTime);
   const signature = await signRequest(payloadJsonStr, timestampStr);
 
-  return { payload, jsonStr: payloadJsonStr, timestamp:
+  return { payload, jsonStr: payloadJsonStr, timestamp: timestampStr, signature };
+}
