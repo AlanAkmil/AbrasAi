@@ -1,0 +1,96 @@
+import { NextRequest } from "next/server";
+import { buildPayload, Message } from "@/lib/mimo";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function POST(req: NextRequest) {
+  const { prompt, messages, model } = await req.json();
+
+  if (!prompt) {
+    return new Response(JSON.stringify({ error: "Prompt required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const { jsonStr, timestamp, signature } = buildPayload(
+    model || "xiaomi/mimo-v2.5-pro",
+    (messages as Message[]) || [],
+    prompt
+  );
+
+  const upstream = await fetch("https://aiv1.clemy.top/chat-completion-stream", {
+    method: "POST",
+    headers: {
+      Accept: "text/event-stream",
+      "Content-Type": "application/json; charset=utf-8",
+      "X-Signature": signature,
+      "X-Timestamp": timestamp,
+      "User-Agent": "Neo/1.0",
+    },
+    body: jsonStr,
+  });
+
+  if (!upstream.ok) {
+    const errText = await upstream.text().catch(() => "Upstream error");
+    return new Response(JSON.stringify({ error: errText }), {
+      status: upstream.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const encoder = new TextEncoder();
+  const reader = upstream.body?.getReader();
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      if (!reader) {
+        controller.close();
+        return;
+      }
+      try {
+        let buffer = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += new TextDecoder().decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data: ")) {
+              const dataStr = trimmed.substring(6).trim();
+              if (dataStr === "[DONE]") {
+                controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+                continue;
+              }
+              try {
+                const parsed = JSON.parse(dataStr);
+                const chunk = parsed.choices?.[0]?.delta?.content;
+                if (chunk) {
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ chunk })}\n\n`)
+                  );
+                }
+              } catch {
+                // ignore malformed lines
+              }
+            }
+          }
+        }
+        controller.close();
+      } catch (e) {
+        controller.error(e);
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  });
+}
