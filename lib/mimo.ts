@@ -82,7 +82,13 @@ export function obfuscate(text: string): string {
 export async function signRequest(rawJson: string, timestamp: string): Promise<string> {
   const key = getKeyBytes();
   const msg = new TextEncoder().encode(`${rawJson}:${timestamp}`);
-  const cryptoKey = await crypto.subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    key.buffer as ArrayBuffer,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
   const sig = await crypto.subtle.sign("HMAC", cryptoKey, msg);
   const bytes = new Uint8Array(sig);
   let binary = "";
@@ -181,5 +187,4 @@ export async function buildPayload(
   const timestampStr = String(currentTime);
   const signature = await signRequest(payloadJsonStr, timestampStr);
 
-  return { payload, jsonStr: payloadJsonStr, timestamp: timestampStr, signature };
-}
+  return { payload, jsonStr: payloadJsonStr, timestamp:
