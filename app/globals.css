@@ -1,0 +1,196 @@
+/* ============================================================
+   MIMO AI — BRUTALIST DESIGN SYSTEM
+   Raw structure. Hard edges. No apologies.
+   ============================================================ */
+
+:root {
+  /* Core palette — paper & ink */
+  --bg: #f4f0e6;
+  --fg: #111111;
+  --accent: #ff2a2a;
+  --accent-alt: #0066ff;
+  --muted: #888888;
+  --border: #111111;
+
+  /* Typography */
+  --font-mono: "Space Mono", "Berkeley Mono", "Departure Mono", ui-monospace, monospace;
+
+  /* Spacing scale */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 40px;
+
+  /* Brutalist shadow */
+  --shadow-hard: 8px 8px 0 0 var(--fg);
+  --shadow-hard-sm: 4px 4px 0 0 var(--fg);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+}
+
+body {
+  font-family: var(--font-mono);
+  background: var(--bg);
+  color: var(--fg);
+  line-height: 1.5;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Raw scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+  border-left: 2px solid var(--border);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--fg);
+  border: 2px solid var(--fg);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Selection */
+::selection {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+/* Links — raw default blue */
+a {
+  color: var(--accent-alt);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+a:hover {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+/* Utility: brutalist card */
+.brutal-card {
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-hard);
+  background: var(--bg);
+  padding: var(--space-md);
+}
+
+.brutal-card-sm {
+  border: 2px solid var(--border);
+  box-shadow: var(--shadow-hard-sm);
+  background: var(--bg);
+  padding: var(--space-sm);
+}
+
+/* Utility: brutalist button */
+.brutal-btn {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  border: 2px solid var(--border);
+  border-radius: 0;
+  padding: 10px 20px;
+  background: var(--fg);
+  color: var(--bg);
+  cursor: pointer;
+  box-shadow: var(--shadow-hard-sm);
+  transition: transform 0.05s, box-shadow 0.05s;
+}
+.brutal-btn:hover {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 0 var(--fg);
+}
+.brutal-btn:active {
+  transform: translate(4px, 4px);
+  box-shadow: 0 0 0 0 var(--fg);
+}
+.brutal-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+/* Utility: brutalist input */
+.brutal-input {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 13px;
+  border: 2px solid var(--border);
+  border-radius: 0;
+  padding: 12px;
+  background: var(--bg);
+  color: var(--fg);
+  outline: none;
+  resize: none;
+  line-height: 1.4;
+  box-shadow: inset 3px 3px 0 rgba(0,0,0,0.08);
+}
+.brutal-input:focus {
+  border-color: var(--accent);
+  box-shadow: inset 3px 3px 0 rgba(255,42,42,0.15);
+}
+.brutal-input::placeholder {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+/* Utility: brutalist select */
+.brutal-select {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  border: 2px solid var(--border);
+  border-radius: 0;
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--fg);
+  cursor: pointer;
+  outline: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23111' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 32px;
+}
+.brutal-select:focus {
+  border-color: var(--accent);
+}
+
+/* Animations */
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+.animate-slide-in {
+  animation: slideIn 0.2s ease-out forwards;
+}
